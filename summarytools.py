@@ -144,11 +144,7 @@ class DataSet(object):
             if 'rt' in post.words_in:
                 self.retweets.append(self.posts.pop(i))
                 post.remove(self.word_dict)
-                post.is_junk = True
                 self.postcount -= 1
-                following = self.posts[i:]
-                for postleft in following:
-                    postleft.index -= 1
             else:
                 i += 1
                 
