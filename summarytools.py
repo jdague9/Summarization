@@ -159,6 +159,7 @@ class Word(object):
     
     def __init__(self, name=''):
         self.name = name
+        self.is_stopword = False
         self.index = -1
         self.co_occur = {}
         self.tf = 0
@@ -166,6 +167,10 @@ class Word(object):
         self.tfidf = 0
         Word.uqcount += 1
         Word.totalcount += 1
+        
+        if self.name in stopwords.words('english'):
+            self.is_stopword = True
+            self.tf, self.idf, self.tfidf = 1, 1, 0
         
     def addtf(self):
         self.tf += 1
