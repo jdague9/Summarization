@@ -73,7 +73,7 @@ class DataSet(object):
         self.postcount, self.wordcount = 0, 0
         # Read through the CSV, tokenize and keep only words, cast to lowercase.
         for row in self.reader:
-            posts.append(Post(text=row[0], index=(self.postcount)))      
+            posts.append(Post(text=row[0]))      
             clean = (filter(lambda x: x not in (string.punctuation + 
                     string.digits), row[0])).lower().strip().split()
             currentpost = posts[self.postcount]
@@ -143,11 +143,18 @@ class DataSet(object):
         for post in self.posts:
             if 'rt' in post.words_in:
                 self.retweets.append(self.posts.pop(i))
+                post.remove(self.word_dict)
+                post.is_junk = True
                 self.postcount -= 1
-                for word in post.words_in:
-                    self.word_dict[word].post_removed(post)
+                following = self.posts[i:]
+                for postleft in following:
+                    postleft.index -= 1
             else:
                 i += 1
+                
+    def create_svec_matrix(self):
+        # REMEMBER TO INDEX POSTS, IF NECESSARY.
+        pass
         
 class Word(object):
     'Base class to store word data relevant to summarization.'
@@ -174,11 +181,17 @@ class Word(object):
     def add2co_occur(self, w):
         self.co_occur[w] = self.co_occur.get(w, 0) + 1
         
-    def post_removed(self, post):
-        self.tf -= post.words_in[self.name]
+    def post_removed(self, words_in_dict):
+        self.tf -= words_in_dict[self.name]
         self.idf -= 1
-        for word in post.words_in:
+        for word in words_in_dict:
             self.co_occur[word] -= 1
+            
+    def post_added(self, words_in_dict):
+        self.tf += words_in_dict[self.name]
+        self.idf += 1
+        for word in words_in_dict:
+            self.co_occur[word] += 1
         
     def calctfidf(self, postcount, wordcount):
         self.tfidf = (float(self.tf) / float(wordcount)) * math.log(
@@ -189,19 +202,37 @@ class Post(object):
     'Base class to store Twitter post data relevant to summarization.'
     count = 0
     
-    def __init__(self, text='', index=-1):
+    def __init__(self, text=''):
         self.text = text
-        self.index = index
+        self.index = -1
         self.score = 0
         self.words_in = {}
         self.s_vec = []
         self.sim = []
-        self.is_rt = False
+        self.is_junk = False
         Post.count += 1
         
     def add2words_in(self, w):
         self.words_in[w] = self.words_in.get(w, 0) + 1
         
+    def add(self, word_dict):
+        if self.is_junk == False:
+            pass
+        else:
+            self.is_junk = False
+            for word in self.words_in:
+                word_dict[word].post_added(self.words_in)
+    
+    def remove(self, word_dict):
+        if self.is_junk == True:
+            pass
+        else:
+            self.is_junk = True
+            for word in self.words_in:
+                word_dict[word].post_removed(self.words_in)
+            self.index = -1
+            self.score = 0                
+                
     def calcscore(self, word_dict):
         weightsum = 0
         length = 0
