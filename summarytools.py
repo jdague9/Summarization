@@ -68,45 +68,65 @@ class DataSet(object):
         """
         # posts and words will hold the Post and Word objects created while
         # extracting data.
-        posts = []
-        words = {}
+        self.posts = []
+        self.word_dict = {}
         self.postcount, self.wordcount = 0, 0
         # Read through the CSV, tokenize and keep only words, cast to lowercase.
         for row in self.reader:
-            posts.append(Post(text=row[0]))      
+            self.posts.append(Post(text=row[0]))      
             clean = (filter(lambda x: x not in (string.punctuation + 
                     string.digits), row[0])).lower().strip().split()
-            currentpost = posts[self.postcount]
-            # nodup keeps track of the words that are encountered while reading
-            #   through each tweet and ignores the word if it is encoutered again.
-            #   This is to calculate idf.
-            nodup = {}
+            currentpost = self.posts[self.postcount]
             for word in clean:
-                # Call Post method to add each word in the tweet to the words_in
-                #   dict for each tweet.
-                currentpost.add2words_in(word)
-                self.wordcount += 1
-                # Increment the tf counter for each word as it is encountered.
-                # Do not increment idf if we've already seen the word in the
-                #   current post.
-                if word in nodup:
-                    words[word].addtf()  
-                else:
-                    # If we haven't yet seen the word in the tweet, increment tf
-                    #   and idf, and add the word to nodup.
-                    if word not in words:
-                        words[word] = Word(name=word)
-                        self.uqwordcount += 1
-                    words[word].addtf()
-                    words[word].addidf()
-                    nodup[word] = 1
-            # Run back through the words_in dict after its been completed and add
-            #   word co-occurrences to the co_occur dict in each Word object.
-            for key in posts[self.postcount].words_in:
-                for compare in posts[self.postcount].words_in:
-                    words[key].add2co_occur(compare)
+                if word not in self.word_dict:
+                    self.word_dict[word] = Word(name=word)
+                currentpost.words_in[word] = currentpost.words_in.get(word, 0) + 1
+            currentpost.add(self.word_dict)
+            self.wordcount += currentpost.wordcount
             self.postcount += 1
-        self.word_dict, self.posts = words, posts
+            
+        # Create word_list, which is simply a list filled with the Word objects
+        #   in word_dict, and then sort it alphabetically.
+        self.word_list = self.word_dict.values()
+        self.word_list.sort(key=lambda x: x.name)
+        # Now that word_list is sorted, store each word's index in each Word
+        #   object. These indeces are used for constructing post vectors.
+        i = 0
+        for word in self.word_list:
+            word.index = i
+            i += 1
+                
+#                # Call Post method to add each word in the tweet to the words_in
+#                #   dict for each tweet.
+#                currentpost.add2words_in(word)
+#                if word not in stopwords.words('enlgish'):
+#                    self.wordcount += 1
+#                # Increment the tf counter for each word as it is encountered.
+#                # Do not increment idf if we've already seen the word in the
+#                #   current post.
+                    
+                
+            
+#                if word in nodup:
+#                    words[word].addtf(1)  
+#                else:
+#                    # If we haven't yet seen the word in the tweet, increment tf
+#                    #   and idf, and add the word to nodup.
+#                    if word not in words:
+#                        words[word] = Word(name=word)
+#                        self.uqwordcount += 1
+#                    words[word].addtf(1)
+#                    words[word].addidf()
+#                    nodup[word] = 1
+#            # Run back through the words_in dict after its been completed and add
+#            #   word co-occurrences to the co_occur dict in each Word object.
+            
+            
+            
+            
+#            for key in posts[self.postcount].words_in:
+#                for compare in posts[self.postcount].words_in:
+#                    words[key].add2co_occur(compare)
             
     def calc_scores(self):
         """Calculates tf-idf weights for words, scores posts
@@ -115,20 +135,10 @@ class DataSet(object):
         #   score for each from the tf and idf values stored in each object,
         #   and storing the tf-idf scores in each object. Keep track of the
         #   highest tf-idf score, so that we can normalize later.
-        for item in self.word_dict:
-            self.word_dict[item].calctfidf(self.postcount, self.wordcount)
-            if self.word_dict[item].tfidf > self.max_tfidf:
-                self.max_tfidf = self.word_dict[item].tfidf
-        # Create word_list, which is simply a list filled with the Word objects
-        #   in word_dict, and then sort it alphabetically.
-        self.word_list = self.word_dict.values()
-        self.word_list.sort(key=lambda x: x.name)
-        # Now that word_list is sorted, store each word's index in each Word
-        #   object.
-        i = 0
-        for word in self.word_list:
-            word.index = i
-            i += 1
+        for word in self.word_dict:
+            self.word_dict[word].calctfidf(self.postcount, self.wordcount)
+            if self.word_dict[word].tfidf > self.max_tfidf:
+                self.max_tfidf = self.word_dict[word].tfidf
         # Calculate the tf-idf score of each sentence
         for item in self.posts:
             item.calcscore(self.word_dict)
@@ -145,6 +155,7 @@ class DataSet(object):
                 self.retweets.append(self.posts.pop(i))
                 post.remove(self.word_dict)
                 self.postcount -= 1
+                self.wordcount -= post.wordcount
             else:
                 i += 1
                 
@@ -154,8 +165,6 @@ class DataSet(object):
         
 class Word(object):
     'Base class to store word data relevant to summarization.'
-    uqcount = 0
-    totalcount = 0
     
     def __init__(self, name=''):
         self.name = name
@@ -165,72 +174,84 @@ class Word(object):
         self.tf = 0
         self.idf = 0
         self.tfidf = 0
-        Word.uqcount += 1
-        Word.totalcount += 1
         
         if self.name in stopwords.words('english'):
             self.is_stopword = True
             self.tf, self.idf, self.tfidf = 1, 1, 0
-        
-    def addtf(self):
-        self.tf += 1
-        Word.totalcount += 1
-        
-    def addidf(self):
-        self.idf += 1
-        
-    def add2co_occur(self, w):
-        self.co_occur[w] = self.co_occur.get(w, 0) + 1
-        
-    def post_removed(self, words_in_dict):
-        self.tf -= words_in_dict[self.name]
-        self.idf -= 1
-        for word in words_in_dict:
-            self.co_occur[word] -= 1
             
-    def post_added(self, words_in_dict):
-        self.tf += words_in_dict[self.name]
-        self.idf += 1
-        for word in words_in_dict:
-            self.co_occur[word] += 1
-        
     def calctfidf(self, postcount, wordcount):
         self.tfidf = (float(self.tf) / float(wordcount)) * math.log(
         (float(postcount) / float(self.idf)), 2)
         
+#    def addtf(self, num=1):
+#        if not self.is_stopword:
+#            self.tf += num
+#            
+#    def subtf(self, num=1):
+#        if not self.is_stopword:
+#            self.tf -= num   
+#        
+#    def addidf(self):
+#        if not self.is_stopword:
+#            self.idf += 1
+#        
+#    def subidf(self):
+#        if not self.is_stopword:
+#            self.idf -= 1
+#        
+#    def addco_occur(self, w):
+#        if not self.is_stopword:
+#            self.co_occur[w] = self.co_occur.get(w, 0) + 1
+#        
+#    def post_added(self, words_in_dict):
+#        self.addtf(words_in_dict[self.name])
+#        self.addidf()
+#        for word in words_in_dict:
+#            self.addco_occur
+#    
+#    def post_removed(self, words_in_dict):
+#        self.tf -= words_in_dict[self.name]
+#        self.idf -= 1
+#        for word in words_in_dict:
+#            self.co_occur[word] -= 1
         
 class Post(object):
     'Base class to store Twitter post data relevant to summarization.'
-    count = 0
     
     def __init__(self, text=''):
         self.text = text
         self.index = -1
         self.score = 0
+        self.wordcount = 0
         self.words_in = {}
         self.s_vec = []
         self.sim = []
-        self.is_junk = False
-        Post.count += 1
-        
-    def add2words_in(self, w):
-        self.words_in[w] = self.words_in.get(w, 0) + 1
+        self.is_junk = True
         
     def add(self, word_dict):
-        if self.is_junk == False:
-            pass
-        else:
+        if self.is_junk:
             self.is_junk = False
             for word in self.words_in:
-                word_dict[word].post_added(self.words_in)
+                if not word_dict[word].is_stopword:
+                    word_dict[word].tf += self.words_in[word]
+                    self.wordcount += self.words_in[word]
+                    word_dict[word].idf += 1
+                    for compare in self.words_in:
+                        if not word_dict[compare].is_stopword:
+                            word_dict[word].co_occur[compare] = word_dict[word
+                            ].co_occur.get(compare, 0) + 1
     
     def remove(self, word_dict):
-        if self.is_junk == True:
-            pass
-        else:
+        if not self.is_junk:
             self.is_junk = True
+            self.wordcount = 0
             for word in self.words_in:
-                word_dict[word].post_removed(self.words_in)
+                if not word_dict[word].is_stopword:
+                    word_dict[word].tf -= self.words_in[word]
+                    word_dict[word].idf -= 1
+                    for compare in self.words_in:
+                        if not word_dict[compare].is_stopword:
+                            word_dict[word].co_occur[compare] -= 1
             self.index = -1
             self.score = 0                
                 
@@ -238,6 +259,7 @@ class Post(object):
         weightsum = 0
         length = 0
         self.s_vec = [0] * len(word_dict)
+        ### MOVE S_VEC CREATION OUT OF POST CLASS AND INTO EXTRACT_DATA() METHOD
         for item in self.words_in:
             weightsum += word_dict[item].tfidf * self.words_in[item]
             length += self.words_in[item]
