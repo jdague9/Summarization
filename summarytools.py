@@ -19,9 +19,12 @@ class DataSet(object):
         self.word_list = []
         self.posts = []
         self.retweets = []
-        self.s_vec_matrix = None
+        self.tfidfs = []
+        self.scores = []
+        self.s_vec_matrix = []
         self.co_occur_matrix = None
-        self.max_tfidf = 0
+        self.max_word_tfidf = 0
+        self.max_post_score = 0
         self.reader = None
         self.has_data = False # Include checks to see if data has already been read.
         self.postcount = 0
@@ -95,6 +98,11 @@ class DataSet(object):
         for word in self.word_list:
             word.index = i
             i += 1
+        
+        length = len(self.word_dict)
+        for post in self.posts:
+            post.create_svec(self.word_dict, length)
+            
                 
 #                # Call Post method to add each word in the tweet to the words_in
 #                #   dict for each tweet.
@@ -135,13 +143,22 @@ class DataSet(object):
         #   score for each from the tf and idf values stored in each object,
         #   and storing the tf-idf scores in each object. Keep track of the
         #   highest tf-idf score, so that we can normalize later.
-        for word in self.word_dict:
-            self.word_dict[word].calctfidf(self.postcount, self.wordcount)
-            if self.word_dict[word].tfidf > self.max_tfidf:
-                self.max_tfidf = self.word_dict[word].tfidf
+        self.tfidfs = []
+        self.scores = []
+        for word in self.word_list:
+            word.calctfidf(self.postcount, self.wordcount)
+            self.tfidfs.append(word.tfidf)
+            if word.tfidf > self.max_word_tfidf:
+                self.max_word_tfidf = word.tfidf
         # Calculate the tf-idf score of each sentence
-        for item in self.posts:
-            item.calcscore(self.word_dict)
+        for post in self.posts:
+            post.calcscore(self.word_dict)
+            self.scores.append(post.score)
+            if post.score > self.max_post_score:
+                self.max_post_score = post.score
+        self.posts.sort(key=lambda x: x.score, reverse=True)
+        
+        
     
     def remove_rt(self):
         """Removes retweets from DataSet.
@@ -158,6 +175,15 @@ class DataSet(object):
                 self.wordcount -= post.wordcount
             else:
                 i += 1
+                
+        self.calc_scores()
+                
+        
+        
+        
+            
+#        for post in self.posts:
+            
                 
     def create_svec_matrix(self):
         # REMEMBER TO INDEX POSTS, IF NECESSARY.
@@ -177,11 +203,12 @@ class Word(object):
         
         if self.name in stopwords.words('english'):
             self.is_stopword = True
-            self.tf, self.idf, self.tfidf = 1, 1, 0
+            self.tf, self.idf, self.tfidf = 0, 0, 0
             
     def calctfidf(self, postcount, wordcount):
-        self.tfidf = (float(self.tf) / float(wordcount)) * math.log(
-        (float(postcount) / float(self.idf)), 2)
+        if self.idf != 0:    
+            self.tfidf = (float(self.tf) / float(wordcount)) * math.log(
+            (float(postcount) / float(self.idf)), 2)
         
 #    def addtf(self, num=1):
 #        if not self.is_stopword:
@@ -253,18 +280,18 @@ class Post(object):
                         if not word_dict[compare].is_stopword:
                             word_dict[word].co_occur[compare] -= 1
             self.index = -1
-            self.score = 0                
+            self.score = 0
+            
+    def create_svec(self, word_dict, length):
+        self.s_vec = [0] * length
+        for word in self.words_in:
+            self.s_vec[word_dict[word].index] = self.words_in[word]
                 
     def calcscore(self, word_dict):
         weightsum = 0
-        length = 0
-        self.s_vec = [0] * len(word_dict)
-        ### MOVE S_VEC CREATION OUT OF POST CLASS AND INTO EXTRACT_DATA() METHOD
         for item in self.words_in:
             weightsum += word_dict[item].tfidf * self.words_in[item]
-            length += self.words_in[item]
-            self.s_vec[word_dict[item].index] = self.words_in[item]
-        self.score = weightsum / max(10, length)
+        self.score = weightsum / max(7, self.wordcount)
         
         
         
