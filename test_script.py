@@ -22,7 +22,7 @@ for post in test.posts:
     print i, post.score
     i += 1
     
-hold = test.word_dict['water'].co_occur.items()
+hold = test.word_dict['water', 'NN'].co_occur.items()
     
 test.remove_rt()
 
@@ -32,7 +32,6 @@ print '# Posts:', test.postcount
 print test.retweets[0].text
 for word in test.retweets[0].words_in:
     print word, 'tf:', test.word_dict[word].tf, 'idf:', test.word_dict[word].idf
-    
 i = 0
 for post in test.posts:
     print i, post.score
@@ -40,4 +39,4 @@ for post in test.posts:
     
 print 'water co_occur'
 print hold
-print test.word_dict['water'].co_occur
+print test.word_dict['water', 'NN'].co_occur

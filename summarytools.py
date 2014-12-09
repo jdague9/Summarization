@@ -7,6 +7,8 @@ import csv
 import string
 import math
 import numpy as np
+import nltk
+import re
 from nltk.corpus import stopwords
 from operator import attrgetter as ag
 
@@ -21,7 +23,7 @@ class DataSet(object):
         self.retweets = []
         self.tfidfs = []
         self.scores = []
-        self.s_vec_matrix = []
+        self.svec_matrix = None
         self.co_occur_matrix = None
         self.max_word_tfidf = 0
         self.max_post_score = 0
@@ -76,13 +78,15 @@ class DataSet(object):
         self.postcount, self.wordcount = 0, 0
         # Read through the CSV, tokenize and keep only words, cast to lowercase.
         for row in self.reader:
-            self.posts.append(Post(text=row[0]))      
-            clean = (filter(lambda x: x not in (string.punctuation + 
-                    string.digits), row[0])).lower().strip().split()
+            self.posts.append(Post(text=row[0]))
+            tokens = nltk.word_tokenize(row[0].lower().strip())
+            tagged = nltk.pos_tag(tokens)
+            clean = filter(lambda x: x[0][0] not in (
+                    string.punctuation + string.digits), tagged)
             currentpost = self.posts[self.postcount]
             for word in clean:
                 if word not in self.word_dict:
-                    self.word_dict[word] = Word(name=word)
+                    self.word_dict[word] = Word(name=word[0], pos = word[1])
                 currentpost.words_in[word] = currentpost.words_in.get(word, 0) + 1
             currentpost.add(self.word_dict)
             self.wordcount += currentpost.wordcount
@@ -102,39 +106,6 @@ class DataSet(object):
         length = len(self.word_dict)
         for post in self.posts:
             post.create_svec(self.word_dict, length)
-            
-                
-#                # Call Post method to add each word in the tweet to the words_in
-#                #   dict for each tweet.
-#                currentpost.add2words_in(word)
-#                if word not in stopwords.words('enlgish'):
-#                    self.wordcount += 1
-#                # Increment the tf counter for each word as it is encountered.
-#                # Do not increment idf if we've already seen the word in the
-#                #   current post.
-                    
-                
-            
-#                if word in nodup:
-#                    words[word].addtf(1)  
-#                else:
-#                    # If we haven't yet seen the word in the tweet, increment tf
-#                    #   and idf, and add the word to nodup.
-#                    if word not in words:
-#                        words[word] = Word(name=word)
-#                        self.uqwordcount += 1
-#                    words[word].addtf(1)
-#                    words[word].addidf()
-#                    nodup[word] = 1
-#            # Run back through the words_in dict after its been completed and add
-#            #   word co-occurrences to the co_occur dict in each Word object.
-            
-            
-            
-            
-#            for key in posts[self.postcount].words_in:
-#                for compare in posts[self.postcount].words_in:
-#                    words[key].add2co_occur(compare)
             
     def calc_scores(self):
         """Calculates tf-idf weights for words, scores posts
@@ -158,7 +129,16 @@ class DataSet(object):
                 self.max_post_score = post.score
         self.posts.sort(key=lambda x: x.score, reverse=True)
         
-        
+    def create_svec_matrix(self):
+        """Creates a matrix from the collection of sentence vectors.
+        """
+        self.svec_matrix = np.zeros((len(self.word_dict), len(self.posts)), 
+                                    dtype=float)
+        i = 0
+        for post in self.posts:
+            for word in post.words_in:
+                self.svec_matrix[self.word_dict[word].index, i] = post.words_in[word]
+            i += 1
     
     def remove_rt(self):
         """Removes retweets from DataSet.
@@ -168,13 +148,15 @@ class DataSet(object):
         """
         i = 0
         for post in self.posts:
-            if 'rt' in post.words_in:
+            if ('rt', 'NN') in post.words_in:
                 self.retweets.append(self.posts.pop(i))
                 post.remove(self.word_dict)
                 self.postcount -= 1
                 self.wordcount -= post.wordcount
             else:
                 i += 1
+                
+        
                 
         self.calc_scores()
                 
@@ -183,17 +165,13 @@ class DataSet(object):
         
             
 #        for post in self.posts:
-            
-                
-    def create_svec_matrix(self):
-        # REMEMBER TO INDEX POSTS, IF NECESSARY.
-        pass
         
 class Word(object):
     'Base class to store word data relevant to summarization.'
     
-    def __init__(self, name=''):
+    def __init__(self, name='', pos='X'):
         self.name = name
+        self.pos = pos
         self.is_stopword = False
         self.index = -1
         self.co_occur = {}
