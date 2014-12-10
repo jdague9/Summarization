@@ -72,18 +72,13 @@ class DataSet(object):
         objects as they are observed.
         
         """
-        # posts and words will hold the Post and Word objects created while
-        # extracting data.
-        self.posts = []
-        self.word_dict = {}
-        self.postcount, self.wordcount = 0, 0
         # Read through the CSV, tokenize and keep only words, cast to lowercase.
         for row in self.reader:
             self.posts.append(Post(text=row[0]))
-            tokens = nltk.word_tokenize(row[0].lower().strip())
-            tagged = nltk.pos_tag(tokens)
-            clean = filter(lambda x: x[0][0] not in (
-                    string.punctuation + string.digits), tagged)
+#            tokens = nltk.word_tokenize(row[0].lower().strip())
+#            tagged = nltk.pos_tag(tokens)
+#            clean = filter(lambda x: x[0][0] not in (
+#                    string.punctuation + string.digits), tagged)
             currentpost = self.posts[self.postcount]
             for word in clean:
                 if word not in self.word_dict:
