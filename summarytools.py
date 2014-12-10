@@ -20,33 +20,28 @@ class DataSet(object):
     def __init__(self, setname='NO_NAME', pos_tag=0):
         self.setname = setname
         self.pos_tag = pos_tag
-#        self.pkl_fname = setname + '.pkl'
-#        self.pickler = None
-#        self.unpickler = None
         self.word_dict = {}
         self.word_list = []
-        self.word_rank = []
         self.posts = []
         self.retweets = []
-        self.tfidfs = []
-        self.scores = []
         self.cosines = None
         self.co_occur_matrix = None
-        self.max_word_tfidf = 0
-        self.max_post_score = 0
         self.reader = None
         self.has_data = False # Include checks to see if data has already been read.
         self.postcount = 0
         self.wordcount = 0
-        self.uqwordcount = 0
         
         if self.pos_tag != 0 and self.pos_tag != 1:
             print 'ERROR: Invalid input for POS tagging. 0 = No, 1 = Yes.'
-            
-#        f = open(self.pkl_fname, 'wb')
-#        self.pickler = pickle.Pickler(f, -1)
-#        self.unpickler = pickle.Unpickler(f)
         
+    def save(self, fname=None):
+        if fname is None:
+            fname = self.setname
+        fname = fname + '.pkl'
+        with open(fname, 'wb') as f:
+            pickler = pickle.Pickler(f, -1)
+            pickler.dump(self)
+    
     def extract_from(self, in_fname, col):
         """Returns a CSV reader object that reads from the file "out_fname".
         
@@ -122,7 +117,7 @@ class DataSet(object):
         #   in word_dict.
         self.word_list = self.word_dict.values()
         self.reader = None
-#        self.pickler.dump(self)
+        self.save()
             
     def calc_scores(self):
         """Calculates tf-idf weights for words, scores posts
@@ -158,7 +153,8 @@ class DataSet(object):
         for post in self.posts:
             for word in post.words_in:
                 svec_matrix[post.index, self.word_dict[word].index] = post.words_in[word] 
-        self.cosines = np.triu(dist.squareform(1 - dist.pdist(svec_matrix, 'cosine')))        
+        self.cosines = np.triu(dist.squareform(1 - dist.pdist(svec_matrix, 'cosine')))
+        self.save()        
     
     def remove_rt(self):
         """Removes retweets from DataSet.
@@ -251,3 +247,8 @@ class Post(object):
         for item in self.words_in:
             weightsum += word_dict[item].tfidf * self.words_in[item]
         self.score = weightsum / max(7, self.wordcount)
+        
+def open_dataset(fname):
+    with open(fname, 'rb') as f:
+        unpickler = pickle.Unpickler(f)
+        return unpickler.load()
