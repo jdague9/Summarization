@@ -10,16 +10,22 @@ import numpy as np
 import scipy.spatial.distance as dist
 import nltk
 import re
+import cPickle as pickle
 from nltk.corpus import stopwords
 from operator import attrgetter as ag
 
 class DataSet(object):
     'Base class to store data representations for a particular dataset.'
     
-    def __init__(self, setname=''):
+    def __init__(self, setname='NO_NAME', pos_tag=0):
         self.setname = setname
+        self.pos_tag = pos_tag
+#        self.pkl_fname = setname + '.pkl'
+#        self.pickler = None
+#        self.unpickler = None
         self.word_dict = {}
         self.word_list = []
+        self.word_rank = []
         self.posts = []
         self.retweets = []
         self.tfidfs = []
@@ -33,6 +39,13 @@ class DataSet(object):
         self.postcount = 0
         self.wordcount = 0
         self.uqwordcount = 0
+        
+        if self.pos_tag != 0 and self.pos_tag != 1:
+            print 'ERROR: Invalid input for POS tagging. 0 = No, 1 = Yes.'
+            
+#        f = open(self.pkl_fname, 'wb')
+#        self.pickler = pickle.Pickler(f, -1)
+#        self.unpickler = pickle.Unpickler(f)
         
     def extract_from(self, in_fname, col):
         """Returns a CSV reader object that reads from the file "out_fname".
@@ -72,32 +85,44 @@ class DataSet(object):
         objects as they are observed.
         
         """
-        # Read through the CSV, tokenize and keep only words, cast to lowercase.
-        for row in self.reader:
-            self.posts.append(Post(text=row[0]))
-#            tokens = nltk.word_tokenize(row[0].lower().strip())
-#            tagged = nltk.pos_tag(tokens)
-#            clean = filter(lambda x: x[0][0] not in (
-#                    string.punctuation + string.digits), tagged)
-            currentpost = self.posts[self.postcount]
-            for word in clean:
-                if word not in self.word_dict:
-                    self.word_dict[word] = Word(name=word[0], pos = word[1])
-                currentpost.words_in[word] = currentpost.words_in.get(word, 0) + 1
-            currentpost.add(self.word_dict)
-            self.wordcount += currentpost.wordcount
-            self.postcount += 1
+        if self.pos_tag == 0:
+            # Read through the CSV, tokenize and keep only words, cast to lowercase.
+            for row in self.reader:
+                self.posts.append(Post(text=row[0]))
+                clean = (filter(lambda x: x not in (string.punctuation + 
+                        string.digits), row[0])).lower().strip().split()
+                currentpost = self.posts[self.postcount]
+                for word in clean:
+                    if word not in self.word_dict:
+                        self.word_dict[word] = Word(name=word)
+                    currentpost.words_in[word] = currentpost.words_in.get(word, 0) + 1
+                currentpost.add(self.word_dict)
+                currentpost.word_rank = [self.word_dict[word] for word in currentpost.words_in]
+                self.wordcount += currentpost.wordcount
+                self.postcount += 1
+        else:
+             # Read through the CSV, tokenize and keep only words, cast to lowercase.
+            for row in self.reader:
+                self.posts.append(Post(text=row[0]))
+                tokens = nltk.word_tokenize(row[0].lower().strip())
+                tagged = nltk.pos_tag(tokens)
+                clean = filter(lambda x: x[0][0] not in (
+                        string.punctuation + string.digits), tagged)
+                currentpost = self.posts[self.postcount]
+                for word in clean:
+                    if word not in self.word_dict:
+                        self.word_dict[word] = Word(name=word[0], pos=word[1])
+                    currentpost.words_in[word] = currentpost.words_in.get(word, 0) + 1
+                currentpost.add(self.word_dict)
+                currentpost.word_rank = [self.word_dict[word] for word in currentpost.words_in]
+                self.wordcount += currentpost.wordcount
+                self.postcount += 1
             
         # Create word_list, which is simply a list filled with the Word objects
-        #   in word_dict, and then sort it alphabetically.
+        #   in word_dict.
         self.word_list = self.word_dict.values()
-        self.word_list.sort(key=lambda x: x.name)
-        # Now that word_list is sorted, store each word's index in each Word
-        #   object. These indeces are used for constructing post vectors.
-        i = 0
-        for word in self.word_list:
-            word.index = i
-            i += 1
+        self.reader = None
+#        self.pickler.dump(self)
             
     def calc_scores(self):
         """Calculates tf-idf weights for words, scores posts
@@ -106,40 +131,33 @@ class DataSet(object):
         #   score for each from the tf and idf values stored in each object,
         #   and storing the tf-idf scores in each object. Keep track of the
         #   highest tf-idf score, so that we can normalize later.
-        self.tfidfs = []
-        self.scores = []
         for word in self.word_list:
             word.calctfidf(self.postcount, self.wordcount)
-            self.tfidfs.append(word.tfidf)
-            if word.tfidf > self.max_word_tfidf:
-                self.max_word_tfidf = word.tfidf
         # Calculate the tf-idf score of each sentence
         for post in self.posts:
             post.calcscore(self.word_dict)
-            self.scores.append(post.score)
-            post.word_rank = post.words_in.keys()
-            i = 0
-            for word in post.word_rank:
-                post.word_rank[i] = self.word_dict[word]
-                i += 1
-            post.word_rank.sort(key=lambda x: x.tfidf, reverse=True)
-            if post.score > self.max_post_score:
-                self.max_post_score = post.score
-            
+            post.word_rank.sort(key=lambda x: x.tfidf, reverse=True)            
         self.posts.sort(key=lambda x: x.score, reverse=True)
+        self.word_list.sort(key=lambda x: x.tfidf, reverse=True)
+        i = 0
+        for word in self.word_list:
+            word.index = i
+            i += 1
+        j = 0
+        for post in self.posts:
+            post.index = j
+            j += 1
         
-    def calc_similarity(self):
-        """Calculates the pairwise cosine similarity of each sentence, using
-        the sentence vector representation.
-        """
-        self.posts.sort(key=lambda x: x.score, reverse=True)
+#    def calc_similarity(self):
+#        """Calculates the pairwise cosine similarity of each sentence, using
+#        the sentence vector representation.
+#        """
+#        self.posts.sort(key=lambda x: x.score, reverse=True)
         svec_matrix = np.zeros((len(self.posts), len(self.word_dict)), 
-                                    dtype=float)
-        i = 0        
+                                    dtype=float)        
         for post in self.posts:
             for word in post.words_in:
-                svec_matrix[i, self.word_dict[word].index] = post.words_in[word]
-            i += 1    
+                svec_matrix[post.index, self.word_dict[word].index] = post.words_in[word] 
         self.cosines = np.triu(dist.squareform(1 - dist.pdist(svec_matrix, 'cosine')))        
     
     def remove_rt(self):
@@ -185,6 +203,8 @@ class Word(object):
         if self.idf != 0:    
             self.tfidf = (float(self.tf) / float(wordcount)) * math.log(
             (float(postcount) / float(self.idf)), 2)
+        else:
+            self.tfidf = 0
         
 class Post(object):
     'Base class to store Twitter post data relevant to summarization.'
