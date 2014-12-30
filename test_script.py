@@ -7,11 +7,20 @@ Created on Thu Dec 04 18:16:09 2014
 
 from summarytools import *
 from datetime import datetime
+start = datetime.now()
+test = DataSet(setname='frozen', pos_tag=0)
+test.extract_from('frozenfood_small.csv', 7)
+print 'Setup:', (datetime.now()-start)
 startTime = datetime.now()
-test = DataSet(setname='Coke', pos_tag=1)
-test.extract_from('Coke Twitter Posts.csv', 1)
 test.extract_data()
-test.calc_scores() 
+print 'Extraction:', (datetime.now()-startTime)
+startTime = datetime.now()
+test.calc_scores()
+print 'Scoring:', (datetime.now()-startTime)
+startTime = datetime.now()
+test.build_svec_matrix()
+print 'Matrix Construction:', (datetime.now()-startTime)
+startTime = datetime.now()
 test.remove_rt()
-    
-print 'Elapsed time:', (datetime.now()-startTime)
+print 'RT Removal:', (datetime.now()-startTime)    
+print 'Total time:', (datetime.now()-start)

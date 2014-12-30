@@ -14,6 +14,9 @@ import cPickle as pickle
 from nltk.corpus import stopwords
 from operator import attrgetter as ag
 
+stops = stopwords.words('english') + stopwords.words('spanish') + ['http', 
+        'rt', 'n\'t', 'lol']
+
 class DataSet(object):
     'Base class to store data representations for a particular dataset.'
     
@@ -54,7 +57,7 @@ class DataSet(object):
         # Open passed file name.
         try:
             rawcsvfile = open(in_fname, 'rU')
-        except : 
+        except IOError : 
             print 'Error: Not a valid file name. Try again.'
         else:
             out_fname = in_fname[:-4] + '_clean.csv'
@@ -81,7 +84,7 @@ class DataSet(object):
         
         """
         if self.pos_tag == 0:
-            # Read through the CSV, tokenize and keep only words, cast to lowercase.
+            # Read thru CSV, tokenize and keep only words, cast to lowercase.
             for row in self.reader:
                 self.posts.append(Post(text=row[0]))
                 clean = (filter(lambda x: x not in (string.punctuation + 
@@ -90,9 +93,11 @@ class DataSet(object):
                 for word in clean:
                     if word not in self.word_dict:
                         self.word_dict[word] = Word(name=word)
-                    currentpost.words_in[word] = currentpost.words_in.get(word, 0) + 1
+                    currentpost.words_in[word] = currentpost.words_in.get(word,
+                                                                         0) + 1
                 currentpost.add(self.word_dict)
-                currentpost.word_rank = [self.word_dict[word] for word in currentpost.words_in]
+                currentpost.word_rank = [self.word_dict[word] for word in 
+                                         currentpost.words_in]
                 self.wordcount += currentpost.wordcount
                 self.postcount += 1
         else:
@@ -100,6 +105,8 @@ class DataSet(object):
             for row in self.reader:
                 self.posts.append(Post(text=row[0]))
                 tokens = nltk.word_tokenize(row[0].lower().strip())
+#                tokens = (filter(lambda x: x not in (string.punctuation + 
+#                        string.digits), row[0])).lower().strip().split()
                 tagged = nltk.pos_tag(tokens)
                 clean = filter(lambda x: x[0][0] not in (
                         string.punctuation + string.digits), tagged)
@@ -131,29 +138,44 @@ class DataSet(object):
         # Calculate the tf-idf score of each sentence
         for post in self.posts:
             post.calcscore(self.word_dict)
-            post.word_rank.sort(key=lambda x: x.tfidf, reverse=True)            
+            post.word_rank.sort(key=lambda x: x.tfidf, reverse=True)  
         self.posts.sort(key=lambda x: x.score, reverse=True)
         self.word_list.sort(key=lambda x: x.tfidf, reverse=True)
-        i = 0
-        for word in self.word_list:
-            word.index = i
-            i += 1
-        j = 0
-        for post in self.posts:
-            post.index = j
-            j += 1
+        max_score = self.posts[0].score        
+        for idx, word in enumerate(self.word_list):
+            word.index = idx
+        for idx, post in enumerate(self.posts):
+            post.score /= max_score
+            post.index = idx
+        self.save()
         
-#    def calc_similarity(self):
-#        """Calculates the pairwise cosine similarity of each sentence, using
-#        the sentence vector representation.
-#        """
-#        self.posts.sort(key=lambda x: x.score, reverse=True)
+    def build_svec_matrix(self):
+        """Calculates the pairwise cosine similarity of each sentence, using
+        the sentence vector representation.
+        """
         svec_matrix = np.zeros((len(self.posts), len(self.word_dict)), 
                                     dtype=float)        
         for post in self.posts:
             for word in post.words_in:
-                svec_matrix[post.index, self.word_dict[word].index] = post.words_in[word] 
-        self.cosines = np.triu(dist.squareform(1 - dist.pdist(svec_matrix, 'cosine')))
+                svec_matrix[post.index, self.word_dict[word].index
+                            ] = post.words_in[word] 
+        self.cosines = np.triu(dist.squareform(1 - dist.pdist(svec_matrix, 
+                                                              'cosine')))
+        
+### MAYBE GET RID OF CO-OCCUR MATRIX IN FAVOR OF JUST USING CO-OCCUR DICTS.        
+#        self.co_occur_matrix = np.zeros((len(self.word_dict), 
+#                                         len(self.word_dict)), dtype=float)
+#        for word in self.word_list:
+#            if word.tf == 0:
+#                continue
+#            for compare in word.co_occur:
+#                if self.word_dict[compare].index > word.index:
+#                    if word.co_occur[compare] == 0:
+#                        continue
+#                    # Use mutal information formula to determine the degree of
+#                    #   significance of an association between two words.
+#                    self.co_occur_matrix[word.index, self.word_dict[compare].index] = math.log((float(word.co_occur[compare]) / self.wordcount) / (float(word.tf * self.word_dict[compare].tf) / (self.wordcount ** 2)), 2)
+#        self.co_occur_matrix = self.co_occur_matrix / np.max(self.co_occur_matrix)
         self.save()        
     
     def remove_rt(self):
@@ -177,11 +199,12 @@ class DataSet(object):
             self.wordcount -= self.posts[i].wordcount
             self.retweets.append(self.posts.pop(i))               
         self.calc_scores()
+        self.build_svec_matrix()
         
 class Word(object):
     'Base class to store word data relevant to summarization.'
     
-    def __init__(self, name='', pos='X'):
+    def __init__(self, name='', pos='-NONE-'):
         self.name = name
         self.pos = pos
         self.is_stopword = False
@@ -191,9 +214,12 @@ class Word(object):
         self.idf = 0
         self.tfidf = 0
         
-        if self.name in stopwords.words('english'):
+        if self.name in stops:
             self.is_stopword = True
             self.tf, self.idf, self.tfidf = 0, 0, 0
+            
+    def __repr__(self):
+        return 'Word ' + str((self.name, self.pos))
             
     def calctfidf(self, postcount, wordcount):
         if self.idf != 0:    
@@ -247,6 +273,22 @@ class Post(object):
         for item in self.words_in:
             weightsum += word_dict[item].tfidf * self.words_in[item]
         self.score = weightsum / max(7, self.wordcount)
+        
+#class Summary(object):
+#    'Base class that holds important summary data.'
+#    def __init__(self, dataset):
+#        self.dataset = dataset
+#        self.summary = []
+#        
+#    def select(self, num=10, threshold=0.77):
+#        selected = [0]
+#        sel_array = np.zeros(num, len(self.dataset.posts))
+#        sel_array[0, :] += self.dataset.cosines[0, :]
+#        while len(selected) < num:
+#            
+#            for index in sel_ind:
+                
+    
         
 def open_dataset(fname):
     with open(fname, 'rb') as f:
